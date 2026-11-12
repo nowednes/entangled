@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tangled Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=IBM+Plex+Mono:wght@300;400;500&family=Noto+Serif+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #020102; overflow: hidden; color: #ffffff;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; -webkit-font-smoothing: antialiased; user-select: none; }
+  canvas { display: block; outline: none; }
+  body.hover canvas { cursor: pointer; }
+  body.follow canvas { cursor: grab; }
+  body.follow.hold canvas { cursor: grabbing; }
+
+  .hud { position: fixed; pointer-events: none; font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; }
+  #brand { top: 26px; left: 32px; line-height: 1; opacity: 0; color: #fff;
+    font-family: 'Cormorant Garamond', 'Times New Roman', serif; font-weight: 500; font-size: 34px; letter-spacing: .3em; transition: opacity 2s 1s; }
+  #count { top: 28px; right: 32px; text-align: right; line-height: 2; opacity: 0; transition: opacity 2s 1.4s; }
+  #count em { font-style: normal; color: #fff; }
+  body.ready #brand, body.ready #count { opacity: 1; }
+
+  #hint { bottom: 36px; left: 50%; transform: translateX(-50%); white-space: nowrap; text-align: center;
+    font-family: 'Noto Serif KR', serif; font-size: 12.5px; font-weight: 500; letter-spacing: .14em; text-transform: none;
+    opacity: 0; transition: opacity 1.2s; color: #fff; }
+  #hint small { display: block; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    letter-spacing: .22em; opacity: .55; text-transform: uppercase; }
+  body.ready #hint { opacity: 1; }
+
+  #label { left: 0; top: 0; padding: 4px 10px; border-left: 1px solid #ff3b35; color: #fff; letter-spacing: .16em; font-size: 12px; font-weight: 500;
+    background: none; opacity: 0; transition: opacity .35s;
+    transform: translate(18px, -50%); white-space: nowrap; }
+  #label span { color: #ff3b35; margin-right: 10px; }
+  body.hover #label { opacity: 1; }
+
+  #progress { bottom: 0; left: 0; height: 1px; width: 0; background: #7a1a1a; box-shadow: none;
+    opacity: 0; transition: opacity .8s; }
+  body.follow #progress { opacity: .7; }
+
+  #phrase { top: 24%; left: 50%; transform: translateX(-50%); width: min(90vw, 640px); text-align: center;
+    font-family: 'Noto Serif KR', serif; font-weight: 400; font-size: 14px; letter-spacing: .14em; text-transform: none;
+    color: #fff; opacity: 0; }
+  #release { position: fixed; top: 24px; right: 28px; pointer-events: auto; background: none; color: #fff;
+    border: 1px solid rgba(255,60,55,.35); padding: 8px 14px; font: inherit; font-size: 10.5px; letter-spacing: .22em;
+    text-transform: uppercase; cursor: pointer; opacity: 0; visibility: hidden; transition: opacity .6s, border-color .3s; }
+  #release:hover { border-color: #ff3b35; color: #fff; }
+  body.follow #release { opacity: 1; visibility: visible; }
+  body.follow #count { opacity: 0; }
+
+  #veil { position: fixed; inset: 0; background: #000; display: grid; place-items: center; transition: opacity 3s ease; z-index: 5; }
+  #veil span { font-family: 'Noto Serif KR', serif; font-size: 12px; letter-spacing: .5em; color: #fff; opacity: 1;
+    animation: flicker 2.4s infinite steps(1); }
+  body.ready #veil { opacity: 0; pointer-events: none; }
+  @keyframes flicker { 0%,100% { opacity: 1 } 47% { opacity: .2 } 50% { opacity: 1 } 83% { opacity: .5 } }
+
+  #gate { position: fixed; inset: 0; display: grid; place-items: center; background: #000; z-index: 6;
+    opacity: 0; visibility: hidden; transition: opacity .8s; }
+  #gate.show { opacity: 1; visibility: visible; }
+  #gate div { text-align: center; }
+  #gate p { font-family: 'Noto Serif KR', serif; letter-spacing: .14em; font-size: 13.5px; font-weight: 500; color: #fff; margin: 0 0 26px; }
+  #gate a, #gate button { display: inline-block; margin: 0 6px; padding: 11px 20px; font: inherit; font-size: 11px;
+    letter-spacing: .24em; text-transform: uppercase; text-decoration: none; cursor: pointer; }
+  #gate a { color: #fff; background: #8e0b12; border: 1px solid #ff3b35; }
+  #gate a:hover { background: #b3121e; }
+  #gate button { color: #fff; background: none; border: 1px solid rgba(255,255,255,.18); }
+  #gate button:hover { border-color: rgba(255,255,255,.5); }
+
+  #err { position: fixed; inset: 0; display: none; place-items: center; color: #fff; font-size: 12px; letter-spacing: .1em; z-index: 7; background:#000; }
+</style>
+</head>
+<body>
+<div id="veil"><span>불안이 얽히는 중</span></div>
+
+<div id="brand" class="hud">ENTANGLED</div>
+<div id="count" class="hud"><em>05</em></div>
+<div id="hint" class="hud"></div>
+<div id="label" class="hud"></div>
+<div id="progress" class="hud"></div>
+<div id="phrase" class="hud"></div>
+<button id="release" type="button">놓기 · ESC</button>
+
+<div id="gate"><div>
+  <p id="gate-msg"></p>
+  <a id="gate-link" href="#" target="_blank" rel="noopener">들어가기 →</a>
+  <button id="gate-back" type="button">돌아가기</button>
+</div></div>
+<div id="err">WebGL을 시작할 수 없습니다. 데스크톱 브라우저(Chrome 권장)에서 열어 주세요.</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* =====================================================================
+   연결 데이터 — 실 5가닥 각각의 끝에 연결된 외부 페이지.
+   나중에 url / title 만 바꾸면 됩니다. (순서 = 실 번호 01~05)
+   ===================================================================== */
+const GAMES = [
+  { title: '털실 1', url: 'https://nowednes.github.io/Presentation-Simulator/' },
+  { title: '털실 2', url: 'https://nowednes.github.io/Presentation-Simulator/' },
+  { title: '털실 3', url: 'https://nowednes.github.io/Presentation-Simulator/' },
+  { title: '털실 4', url: 'https://nowednes.github.io/Presentation-Simulator/' },
+  { title: '털실 5', url: 'https://nowednes.github.io/Presentation-Simulator/' },
+];
+
+/* 실의 모양을 바꾸고 싶으면 SEED 숫자를 바꾸세요 (같은 숫자 = 항상 같은 엉킴) */
+const SEED = 20261112;
+
+/* 이동 속도 (단위/초) */
+const SPEED_BASE = 1.25;   // 자동으로 따라가는 기본 속도
+const SPEED_HOLD = 4.2;    // (사용 안 함 — 이동은 시간 기반)
+/* 클릭 → 페이지 이동까지 총 약 8.7초 = 추적 TRAVEL_TIME + 암전 ENTER_TIME */
+const TRAVEL_TIME = 7.5;   // 실을 따라 끝까지 가는 시간(초) — 가속·감속 포함
+const ENTER_TIME = 1.2;    // 끝에 닿은 뒤 암전되어 이동하기까지(초)
+const MAX_TRAVEL = 26;     // 한 번에 따라가는 최대 실 길이 — 너무 먼 지점을 클릭하면 끝에서 이 길이만큼 앞부터 시작
+
+// ---------------------------------------------------------------------
+const V = THREE.Vector3;
+const TAU = Math.PI * 2;
+const clamp = THREE.MathUtils.clamp;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rand = mulberry32(SEED);
+const R = (a, b) => a + (b - a) * rand();
+
+// ---------------------------------------------------------------- renderer
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e) { document.getElementById('err').style.display = 'grid'; throw e; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020102);
+scene.fog = new THREE.FogExp2(0x020102, 0.03);
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.03, 200);
+camera.position.set(0, 0, 18);
+
+// ---------------------------------------------------------------- lights
+scene.add(new THREE.HemisphereLight(0x3a0c10, 0x000000, 0.35));
+
+const key = new THREE.SpotLight(0xffe4d8, 0, 70, 0.44, 0.85, 2);
+key.position.set(-9, 12, 16);
+key.target.position.set(0.6, -0.4, 0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.bias = -0.0002;
+key.shadow.normalBias = 0.02;
+key.shadow.camera.near = 8;
+key.shadow.camera.far = 60;
+scene.add(key, key.target);
+const KEY_I = 950;
+
+const rim = new THREE.DirectionalLight(0xff2232, 0);
+rim.position.set(4, -5, -12);
+scene.add(rim);
+const RIM_I = 1.6;
+
+// 천천히 떠도는 탐조등 — 엉킨 실의 일부만 드러냈다 숨긴다
+const wander = new THREE.SpotLight(0xff7a62, 0, 50, 0.22, 1, 2);
+wander.position.set(9, -7, 14);
+scene.add(wander, wander.target);
+const WANDER_I = 380;
+
+// 따라가는 동안 실의 머리를 비추는 빛
+const headLight = new THREE.PointLight(0xff7a6a, 0, 9, 2);
+scene.add(headLight);
+
+// ---------------------------------------------------------------- fiber texture (procedural)
+function makeFiberTexture() {
+  const w = 512, h = 128;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#9a9a9a'; g.fillRect(0, 0, w, h);
+  const r2 = mulberry32(7);
+  for (let i = 0; i < 3200; i++) {
+    const x = r2() * w, y = r2() * h, len = 18 + r2() * 70;
+    const ang = 0.16 + (r2() - 0.5) * 0.35;
+    const v = Math.floor(70 + r2() * 185);
+    g.strokeStyle = `rgba(${v},${v},${v},${0.2 + r2() * 0.55})`;
+    g.lineWidth = 0.5 + r2() * 1.7;
+    const dx = Math.cos(ang) * len, dy = Math.sin(ang) * len;
+    for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
+      g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + dx, y + oy + dy); g.stroke();
+    }
+  }
+  // 섬유 사이 어두운 틈
+  for (let i = 0; i < 260; i++) {
+    const x = r2() * w, y = r2() * h;
+    g.strokeStyle = `rgba(0,0,0,${0.15 + r2() * 0.3})`; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + 40, y + 6); g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+const fiberTex = makeFiberTexture();
+
+// ---------------------------------------------------------------- geometry helpers
+// rotation-minimizing (parallel transport) frames — 실이 꼬여도 단면이 뒤집히지 않게
+function ptFrames(pts) {
+  const n = pts.length, T = new Array(n), N = new Array(n), B = new Array(n);
+  for (let i = 0; i < n; i++) {
+    T[i] = new V().subVectors(pts[Math.min(i + 1, n - 1)], pts[Math.max(i - 1, 0)]).normalize();
+  }
+  const t0 = T[0];
+  const ref = Math.abs(t0.y) < 0.9 ? new V(0, 1, 0) : new V(1, 0, 0);
+  N[0] = new V().crossVectors(t0, ref).normalize();
+  B[0] = new V().crossVectors(t0, N[0]);
+  const axis = new V();
+  for (let i = 1; i < n; i++) {
+    axis.crossVectors(T[i - 1], T[i]);
+    const l = axis.length();
+    N[i] = N[i - 1].clone();
+    if (l > 1e-7) {
+      const ang = Math.acos(clamp(T[i - 1].dot(T[i]), -1, 1));
+      N[i].applyAxisAngle(axis.multiplyScalar(1 / l), ang);
+    }
+    // 수치 오차 정리
+    N[i].sub(T[i].clone().multiplyScalar(N[i].dot(T[i]))).normalize();
+    B[i] = new V().crossVectors(T[i], N[i]);
+  }
+  return { T, N, B };
+}
+
+// 직접 만든 튜브: uv.x = 기준 곡선 위 위치(0~1)와 정확히 일치, 겹(ply) 사이 그늘(AO)을 버텍스 컬러로 굽는다
+function buildTube(pts, radiusFn, radial, opts = {}) {
+  const n = pts.length;
+  const { T, N, B } = ptFrames(pts);
+  const cap = !!opts.cap;
+  const vcount = n * (radial + 1) + (cap ? 1 : 0);
+  const pos = new Float32Array(vcount * 3), nor = new Float32Array(vcount * 3), uv = new Float32Array(vcount * 2);
+  const col = opts.colors ? new Float32Array(vcount * 3) : null;
+  const rn = new V(), ad = new V();
+  let p = 0;
+  for (let i = 0; i < n; i++) {
+    const r = radiusFn(i);
+    let hasAO = false;
+    if (opts.center) { ad.subVectors(pts[i], opts.center[i]); const l = ad.length(); if (l > 1e-5) { ad.multiplyScalar(1 / l); hasAO = true; } }
+    const shade = opts.shade ? opts.shade(i) : 1;
+    for (let j = 0; j <= radial; j++) {
+      const a = j / radial * TAU, c = Math.cos(a), s = Math.sin(a);
+      rn.set(N[i].x * c + B[i].x * s, N[i].y * c + B[i].y * s, N[i].z * c + B[i].z * s);
+      pos[p * 3] = pts[i].x + rn.x * r; pos[p * 3 + 1] = pts[i].y + rn.y * r; pos[p * 3 + 2] = pts[i].z + rn.z * r;
+      nor[p * 3] = rn.x; nor[p * 3 + 1] = rn.y; nor[p * 3 + 2] = rn.z;
+      uv[p * 2] = i / (n - 1); uv[p * 2 + 1] = j / radial;
+      if (col) {
+        const ao = hasAO ? 0.2 + 0.8 * smooth(-0.8, 0.85, rn.dot(ad)) : 1;
+        const k = ao * shade;
+        col[p * 3] = k; col[p * 3 + 1] = k; col[p * 3 + 2] = k;
+      }
+      p++;
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < n - 1; i++) for (let j = 0; j < radial; j++) {
+    const a = i * (radial + 1) + j, b = (i + 1) * (radial + 1) + j, c = b + 1, d = a + 1;
+    idx.push(a, d, b, b, d, c);
+  }
+  if (cap) {
+    const ci = p, last = pts[n - 1], t = T[n - 1];
+    pos[ci * 3] = last.x; pos[ci * 3 + 1] = last.y; pos[ci * 3 + 2] = last.z;
+    nor[ci * 3] = t.x; nor[ci * 3 + 1] = t.y; nor[ci * 3 + 2] = t.z;
+    uv[ci * 2] = 1; uv[ci * 2 + 1] = 0.5;
+    if (col) { col[ci * 3] = col[ci * 3 + 1] = col[ci * 3 + 2] = 0.7; }
+    for (let j = 0; j < radial; j++) { const a = (n - 1) * (radial + 1) + j; idx.push(a, a + 1, ci); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+// ---------------------------------------------------------------- yarn material
+function makeYarnMaterial(hex, L) {
+  const tex = fiberTex.clone();
+  tex.repeat.set(L / 0.45, 1);
+  tex.needsUpdate = true;
+  const m = new THREE.MeshPhysicalMaterial({
+    color: hex, roughness: 0.86, metalness: 0,
+    map: tex, bumpMap: tex, bumpScale: 2.2,
+    sheen: 1, sheenRoughness: 0.42, sheenColor: new THREE.Color(0xff6a5c),
+    vertexColors: true,
+  });
+  const u = { uHead: { value: -10 }, uSel: { value: 0 }, uHover: { value: 0 }, uDim: { value: 1 }, uLen: { value: L }, uTime: { value: 0 } };
+  m.userData.u = u;
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = 'varying float vT;\n' + sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n vT = uv.x;');
+    sh.fragmentShader = 'varying float vT;\nuniform float uHead, uSel, uHover, uDim, uLen, uTime;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= uDim * (1.22 + 0.3 * uSel + 0.45 * uHover);')
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_SHEEN\n material.sheenColor *= uDim;\n#endif')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        // 은은한 밝기 강조만 — 발광/네온 없음
+        // 재질 자체를 아주 조금 밝게 (어두운 면에서도 형태와 결이 읽히도록)
+        totalEmissiveRadiance += diffuseColor.rgb * 0.045;
+        // 추적: 일정한 붉은 강조 / 호버: 더 밝은 붉은 강조 (네온 테두리는 glow shell이 담당)
+        totalEmissiveRadiance += vec3(0.5, 0.03, 0.025) * (0.06 * uSel + 0.22 * uHover);`);
+  };
+  m.customProgramCacheKey = () => 'yarn-v3';
+  return m;
+}
+
+function makeGlowMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color(1.0, 0.07, 0.05) } },
+    vertexShader: `varying vec3 vN; varying vec3 vV;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uOpacity; uniform vec3 uColor; varying vec3 vN; varying vec3 vV;
+      void main(){ float f = pow(abs(dot(normalize(vN), normalize(vV))), 3.2);
+        gl_FragColor = vec4(uColor * f * uOpacity, 1.0); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+}
+
+// ---------------------------------------------------------------- strand builder
+const SAMPLES_PER_UNIT = 14;
+const PLY_OFF = 0.041, PLY_R = 0.046, TWIST = TAU / 0.78;
+
+function buildStrand(ctrl, cfg) {
+  // 1) 큰 흐름: control points → 부드러운 곡선
+  const c0 = new THREE.CatmullRomCurve3(ctrl, false, 'centripetal');
+  c0.arcLengthDivisions = 5000;
+  const L0 = c0.getLength();
+  const m = Math.ceil(L0 * 3);
+  const raw = c0.getSpacedPoints(m);
+  // 2) 유기적인 흔들림: 여러 주파수의 사인 노이즈
+  const ph = Array.from({ length: 9 }, () => R(0, TAU));
+  const fr = [R(0.45, 0.75), R(1.1, 1.7), R(2.6, 3.6)];
+  const amp = cfg.knot ? [0.28, 0.14, 0.05] : [0.4, 0.17, 0.055];
+  const noised = raw.map((p, k) => {
+    const s = k / m * L0;
+    const tip = cfg.fray ? smooth(L0, L0 - 2.5, s) : 1;
+    const o = (a) => amp[0] * Math.sin(s * fr[0] + ph[a]) + amp[1] * Math.sin(s * fr[1] + ph[a + 3]) + amp[2] * Math.sin(s * fr[2] + ph[a + 6]);
+    return new V(p.x + o(0) * tip, p.y + o(1) * tip, p.z + o(2) * tip);
+  });
+  const curve = new THREE.CatmullRomCurve3(noised, false, 'catmullrom', 0.5);
+  curve.arcLengthDivisions = m * 8;
+  const L = curve.getLength();
+  const n = Math.ceil(L * SAMPLES_PER_UNIT);
+  const P = curve.getSpacedPoints(n - 1);
+  const { T, N, B } = ptFrames(P);
+  const step = L / (n - 1);
+
+  const group = new THREE.Group();
+  const mat = makeYarnMaterial(cfg.color, L);
+
+  // 3) 세 가닥의 겹(ply)을 꼬아 한 올의 털실로
+  const dyePh = R(0, TAU);
+  for (let k = 0; k < 3; k++) {
+    const Q = new Array(n);
+    const plyTone = 0.93 + 0.14 * rand();
+    for (let i = 0; i < n; i++) {
+      const s = i * step;
+      const fray = cfg.fray ? smooth(L - 1.0, L, s) : 0;
+      const ang = s * TWIST + k * TAU / 3 + fray * fray * 1.2;
+      const off = PLY_OFF * (1 + fray * fray * 6.5);
+      const c = Math.cos(ang), sn = Math.sin(ang);
+      Q[i] = new V(
+        P[i].x + (N[i].x * c + B[i].x * sn) * off,
+        P[i].y + (N[i].y * c + B[i].y * sn) * off,
+        P[i].z + (N[i].z * c + B[i].z * sn) * off);
+    }
+    const geo = buildTube(Q,
+      (i) => PLY_R * (1 - 0.5 * (cfg.fray ? smooth(L - 0.35, L, i * step) : 0)),
+      8,
+      { center: P, colors: true, cap: !!cfg.fray,
+        shade: (i) => plyTone * (0.84 + 0.16 * Math.sin(i * step * 0.7 + dyePh) * Math.sin(i * step * 2.3 + k)) });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+
+  // 4) 잔털 (fuzz) — 빛 방향을 미리 구워 넣은 짧은 선들
+  const fuzz = buildFuzz(P, T, N, B, L, step, cfg);
+  group.add(fuzz);
+
+  // 5) 클릭 판정용 두꺼운 보이지 않는 튜브
+  let pick = null;
+  if (cfg.interactive) {
+    const sub = [];
+    for (let i = 0; i < n; i += 3) sub.push(P[i]);
+    if (sub[sub.length - 1] !== P[n - 1]) sub.push(P[n - 1]);
+    pick = new THREE.Mesh(buildTube(sub, () => 0.24, 6), new THREE.MeshBasicMaterial());
+    pick.userData.idx = cfg.idx;
+    pick.updateMatrixWorld(true);
+  }
+
+  // 6) 호버용 네온 글로우 — 실에 밀착된 얇은 발광 껍질 (Bloom 없이)
+  let glow = null;
+  if (cfg.interactive) {
+    const sub = [];
+    for (let i = 0; i < n; i += 2) sub.push(P[i]);
+    if (sub[sub.length - 1] !== P[n - 1]) sub.push(P[n - 1]);
+    glow = new THREE.Mesh(buildTube(sub, (i) => 0.2 * (1 - 0.5 * smooth(sub.length - 4, sub.length - 1, i)), 12), makeGlowMaterial());
+    glow.visible = false;
+    glow.renderOrder = 2;
+    group.add(glow);
+  }
+  scene.add(group);
+  return { idx: cfg.idx, interactive: !!cfg.interactive, L, P, n, mat, fuzzMat: fuzz.material, group, pick, glow };
+}
+
+const keyDir = new V();
+function buildFuzz(P, T, N, B, L, step, cfg) {
+  const baseCount = Math.floor(L * 72);
+  const count = baseCount + (cfg.fray ? 520 : 0);
+  const pos = new Float32Array(count * 6), col = new Float32Array(count * 6);
+  const color = new THREE.Color(cfg.color);
+  const nn = new V(), dir = new V(), root = new V(), tip = new V();
+  for (let h = 0; h < count; h++) {
+    const endHair = h >= baseCount;
+    const s = endHair ? L - Math.pow(Math.random(), 1.6) * 0.9 : Math.random() * L;
+    const i = clamp(Math.round(s / step), 0, P.length - 1);
+    const a = Math.random() * TAU;
+    nn.set(0, 0, 0).addScaledVector(N[i], Math.cos(a)).addScaledVector(B[i], Math.sin(a));
+    root.copy(P[i]).addScaledVector(nn, endHair ? Math.random() * 0.06 : 0.055 + Math.random() * 0.035);
+    const len = endHair ? 0.07 + Math.random() * 0.26 : 0.02 + Math.random() * 0.07;
+    dir.copy(nn).multiplyScalar(0.35 + Math.random() * 0.7)
+      .addScaledVector(T[i], endHair ? 0.6 + Math.random() * 0.8 : (Math.random() - 0.5) * 1.6)
+      .add(new V(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.5)).normalize();
+    tip.copy(root).addScaledVector(dir, len);
+    keyDir.subVectors(key.position, root).normalize();
+    const lit = (0.08 + 0.92 * Math.max(0, nn.dot(keyDir))) * (0.3 + 0.7 * Math.exp(-(root.x * root.x + root.y * root.y) / 45));
+    const kr = lit * 0.58, kt = lit * 1.45 * (endHair ? 1.3 : 1);
+    pos.set([root.x, root.y, root.z, tip.x, tip.y, tip.z], h * 6);
+    col.set([color.r * kr, color.g * kr, color.b * kr, color.r * kt, color.g * kt, color.b * kt], h * 6);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false });
+  return new THREE.LineSegments(geo, mat);
+}
+
+// ---------------------------------------------------------------- paths
+function inEllipsoid(rx, ry, rz) {
+  let x, y, z; do { x = R(-1, 1); y = R(-1, 1); z = R(-1, 1); } while (x * x + y * y + z * z > 1);
+  return new V(x * rx, y * ry, z * rz);
+}
+function tangle(pts, k, rx, ry, rz, minD, maxD) {
+  let prev = pts[pts.length - 1];
+  for (let j = 0; j < k; j++) {
+    let p, tries = 0;
+    do { p = inEllipsoid(rx, ry, rz); tries++; }
+    while (tries < 60 && (p.distanceTo(prev) < minD || p.distanceTo(prev) > maxD));
+    pts.push(p); prev = p;
+  }
+}
+const far = (a, rx, ry, z) => new V(Math.cos(a) * rx, Math.sin(a) * ry, z);
+
+const startA = [0, 1, 2, 3, 4].map(i => i / 5 * TAU + 0.3 + R(-0.25, 0.25));
+let endA = [0, 1, 2, 3, 4].map(i => i / 5 * TAU + 0.3 + TAU / 10 + R(-0.12, 0.12));
+for (let t = 0; t < 80; t++) {           // 시작과 끝 방향이 겹치지 않도록 섞기
+  const sh = endA.slice().sort(() => rand() - 0.5);
+  const ok = sh.every((b, i) => Math.abs(Math.atan2(Math.sin(b - startA[i]), Math.cos(b - startA[i]))) > 1.3);
+  if (ok) { endA = sh; break; }
+}
+
+function interactivePath(i) {
+  const a = startA[i], b = endA[i];
+  const pts = [far(a, 34, 21, R(-12, -4)), far(a, 15, 9, R(-4, 0)), far(a + R(-.3, .3), 7.5, 4.6, R(-2, 1.5))];
+  tangle(pts, 7 + Math.floor(rand() * 3), 4.3, 3.0, 2.5, 2.0, 5.5);
+  const sw = rand() < 0.5 ? -1 : 1;
+  pts.push(far(b - sw * 0.35, 5.6, 3.5, R(-1, 1)));
+  pts.push(far(b + sw * 0.15, 8.2, 5.0, R(0, 1.4)));
+  pts.push(far(b + sw * 0.32, 7.0, 4.3, R(1.2, 2.6)));   // 실의 끝 — 화면 안쪽
+  return pts;
+}
+function decorPath(knot) {
+  const a = R(0, TAU), b = a + R(2.0, 4.2);
+  const pts = [far(a, 34, 21, R(-14, -2)), far(a, 13, 8, R(-4, 1))];
+  if (knot) tangle(pts, 10 + Math.floor(rand() * 4), 2.6, 2.0, 1.8, 1.2, 3.6);
+  else tangle(pts, 6 + Math.floor(rand() * 4), 4.0, 2.8, 2.3, 1.8, 5.5);
+  pts.push(far(b, 13, 8, R(-4, 1)), far(b, 34, 21, R(-14, -2)));
+  return pts;
+}
+
+// ---------------------------------------------------------------- build world
+const INTER_COLORS = [0xb8121e, 0xab0f1a, 0xc0161f, 0xa51119, 0xb3141c];
+const DECOR_COLORS = [0x7e0c15, 0x6c0a12, 0x880e17, 0x5e0910, 0x740b14];
+const strands = [];
+for (let i = 0; i < 5; i++) strands.push(buildStrand(interactivePath(i), { idx: i, interactive: true, fray: true, color: INTER_COLORS[i] }));
+for (let i = 0; i < 6; i++) strands.push(buildStrand(decorPath(false), { idx: -1, color: DECOR_COLORS[i % 5] }));
+for (let i = 0; i < 3; i++) strands.push(buildStrand(decorPath(true), { idx: -1, knot: true, color: DECOR_COLORS[(i + 2) % 5] }));
+const picks = strands.filter(s => s.pick).map(s => s.pick);
+const inter = strands.filter(s => s.interactive);
+
+// 떠다니는 먼지
+{
+  const c = 900, pos = new Float32Array(c * 3);
+  for (let i = 0; i < c; i++) { pos[i * 3] = (Math.random() - .5) * 34; pos[i * 3 + 1] = (Math.random() - .5) * 22; pos[i * 3 + 2] = (Math.random() - .5) * 18; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x6a2a28, size: 0.035, transparent: true, opacity: 0.55, depthWrite: false }));
+  scene.add(dust);
+}
+
+// ---------------------------------------------------------------- post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.12, 0.4, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const fx = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRed: { value: 0 }, uDark: { value: 0 }, uPulse: { value: 0 }, uAspect: { value: innerWidth / innerHeight } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime, uRed, uDark, uPulse, uAspect; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+    void main(){
+      vec2 c = vUv - 0.5;
+      float r = length(c * vec2(uAspect, 1.0));
+      float ca = 0.0012;
+      vec3 col;
+      col.r = texture2D(tDiffuse, vUv + c * ca).r;
+      col.g = texture2D(tDiffuse, vUv).g;
+      col.b = texture2D(tDiffuse, vUv - c * ca).b;
+      float vig = 1.0 - smoothstep(0.22 - uPulse * 0.05, 0.95 - uPulse * 0.15, r);
+      col *= mix(0.25, 1.0, vig);
+      col += (hash(vUv * 1000.0 + fract(uTime * 7.13) * 91.7) - 0.5) * 0.035;
+      vec3 red = vec3(0.85, 0.02, 0.03);
+      float m = clamp(uRed * 2.0 - r * 0.9, 0.0, 1.0);
+      col = mix(col, max(col, red * (1.35 - r)), m);
+      col *= 1.0 - uDark;
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+composer.addPass(fx);
+
+// ---------------------------------------------------------------- UI refs
+const $ = (id) => document.getElementById(id);
+const hintEl = $('hint'), labelEl = $('label'), progEl = $('progress'), gate = $('gate'), gateLink = $('gate-link');
+const setHint = (main, sub) => { hintEl.innerHTML = main + (sub ? `<small>${sub}</small>` : ''); };
+setHint('', '');
+
+// ---------------------------------------------------------------- state
+let state = 'intro';
+let hovered = -1, hoverU = 0, sel = -1, u = 0, uMin = 0, vel = 0, holding = false, wheelImp = 0, enterT = 0, navigated = false;
+let time = 0, intro = 0;
+let followStart = 0, followT = 0, shownPhrase = -1, phraseOp = 0;
+const PHRASES = [
+  '당신이 마주할 불안을 찾아가는 중.',
+  '급하게 풀려고 할수록 더 복잡하게 얽힙니다.',
+  '잘못 엉킨 실은 쉽게 원래대로 돌아오지 않습니다.',
+];
+// 진행률(0~1) 구간: [나타나기 시작, 사라지기 끝]
+const PHRASE_RANGES = [[0.0, 0.29], [0.35, 0.63], [0.69, 0.98]];
+const phraseEl = document.getElementById('phrase');
+function phraseTarget(prog) {
+  for (let i = 0; i < PHRASE_RANGES.length; i++) {
+    const [a, b] = PHRASE_RANGES[i];
+    if (prog >= a && prog <= b) {
+      const fin = i === 0 ? smooth(0.0, 0.035, prog) : smooth(a, a + 0.06, prog);
+      return [i, fin * (1 - smooth(b - 0.07, b, prog))];
+    }
+  }
+  return [-1, 0];
+}
+const mouse = new THREE.Vector2(), mouseSm = new THREE.Vector2();
+const camPos = camera.position.clone(), camLook = new V();
+const wantPos = new V(), wantLook = new V();
+const raycaster = new THREE.Raycaster();
+let downX = 0, downY = 0;
+
+function sampleP(st, t) {
+  const f = clamp(t, 0, 1) * (st.n - 1), i = Math.floor(f), j = Math.min(i + 1, st.n - 1);
+  return new V().lerpVectors(st.P[i], st.P[j], f - i);
+}
+
+function pickAt(cx, cy) {
+  mouse.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects(picks, false)[0];
+  return hit ? { idx: hit.object.userData.idx, u: hit.uv.x } : null;
+}
+
+function startFollow(i, u0) {
+  sel = i; const st = inter[i];
+  u = clamp(u0 - 0.6 / st.L, 0.03, 1 - 9 / st.L);
+  u = Math.max(u, 1 - MAX_TRAVEL / st.L);
+  uMin = 0.02; vel = 0; wheelImp = 0; followStart = u; followT = 0;
+  state = 'follow';
+  hovered = -1;
+  document.body.classList.remove('hover');
+  document.body.classList.add('follow');
+  setHint(GAMES[i].title, '');
+}
+function release() {
+  if (state !== 'follow') return;
+  state = 'overview'; sel = -1; holding = false;
+  document.body.classList.remove('follow', 'hold');
+  setHint('', '');
+}
+function startEnter() {
+  state = 'enter'; enterT = 0; navigated = false; holding = false;
+  document.body.classList.remove('hold');
+  setHint('', '');
+}
+function goTo(url) {
+  let embedded = true;
+  try { embedded = window.self !== window.top; } catch (e) { embedded = true; }
+  gateLink.href = url;
+  if (!embedded) { window.location.href = url; return; }
+  // claude.ai 미리보기처럼 다른 페이지 안에 들어가 있으면 새 탭으로 연다 (막히면 버튼으로)
+  try { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {}
+  $('gate-msg').textContent = GAMES[sel].title;
+  gate.classList.add('show');
+}
+$('gate-back').addEventListener('click', () => {
+  gate.classList.remove('show');
+  state = 'follow'; release();
+  fx.uniforms.uRed.value = 0; fx.uniforms.uDark.value = 0;
+  camPos.set(0, 0, 18); camLook.set(0, 0, 0);
+});
+$('release').addEventListener('click', release);
+
+// ---------------------------------------------------------------- input
+const cvs = renderer.domElement;
+addEventListener('pointermove', (e) => {
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  labelEl.style.left = e.clientX + 'px'; labelEl.style.top = e.clientY + 'px';
+  if (state !== 'overview') return;
+  const h = pickAt(e.clientX, e.clientY);
+  hovered = h ? h.idx : -1; hoverU = h ? h.u : 0;
+  document.body.classList.toggle('hover', hovered >= 0);
+  if (hovered >= 0) labelEl.textContent = GAMES[hovered].title;
+});
+cvs.addEventListener('pointerdown', (e) => {
+  downX = e.clientX; downY = e.clientY;
+  if (state === 'follow') {
+    if (e.button === 2) { release(); return; }
+    if (e.button === 0) { holding = true; document.body.classList.add('hold'); }
+  }
+});
+addEventListener('pointerup', (e) => {
+  if (state === 'follow') { holding = false; document.body.classList.remove('hold'); return; }
+  if (state !== 'overview' || e.button !== 0 || e.target !== cvs) return;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+  const h = pickAt(e.clientX, e.clientY);
+  if (h) startFollow(h.idx, h.u);
+});
+cvs.addEventListener('contextmenu', (e) => e.preventDefault());
+addEventListener('wheel', (e) => {
+  if (state !== 'follow') return;
+  wheelImp = clamp(wheelImp + clamp(e.deltaY * 0.006, -2.5, 2.5), -5, 7);
+}, { passive: true });
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') release();
+  if (state === 'follow' && (e.key === ' ' || e.key === 'ArrowUp')) { holding = true; e.preventDefault(); }
+  if (state === 'follow' && e.key === 'ArrowDown') { wheelImp = clamp(wheelImp - 1.5, -5, 7); }
+});
+addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'ArrowUp') holding = false; });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  bloom.setSize(innerWidth / 2, innerHeight / 2);
+  fx.uniforms.uAspect.value = innerWidth / innerHeight;
+});
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
+let near = 0;
+
+setTimeout(() => { document.body.classList.add('ready'); state = 'overview'; }, 900);
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
+  intro = Math.min(1, intro + dt / 3.2);
+  const introE = intro * intro * (3 - 2 * intro);
+  const following = state === 'follow' || state === 'enter';
+  let head = null;
+
+  if (state === 'follow') {
+    const st = inter[sel];
+    // 시간 기반 자동 추적: 부드러운 가속 → 감속 (sine ease-in-out)
+    followT += dt;
+    const x = clamp(followT / TRAVEL_TIME, 0, 1);
+    u = followStart + (1 - followStart) * (0.5 - 0.5 * Math.cos(Math.PI * x));
+    near = 1 - smooth(0, 6, (1 - u) * st.L);
+    head = sampleP(st, u);
+    // 일정한 거리를 두고 뒤에서 따라간다 — 끝에 가까워져도 줌인하지 않음
+    const pb = sampleP(st, u - 4.0 / st.L);
+    const pa = sampleP(st, u + 2.0 / st.L);
+    wantPos.copy(pb).lerp(head, 0.35).add(new V(Math.sin(time * 0.17) * 0.35, 1.3, 3.4));
+    wantLook.copy(head).multiplyScalar(0.6).addScaledVector(pa, 0.4);
+    camPos.lerp(wantPos, ease(2.0, dt));
+    camLook.lerp(wantLook, ease(2.6, dt));
+    progEl.style.width = (u * 100).toFixed(2) + '%';
+    if (x >= 1) startEnter();
+  } else if (state === 'enter') {
+    const st = inter[sel];
+    enterT += dt;
+    head = sampleP(st, 1);
+    // 카메라는 그 자리에 머물고, 화면만 천천히 어두워진다
+    camLook.lerp(head, ease(1.2, dt));
+    near = 1;
+    fx.uniforms.uRed.value = 0.18 * smooth(0.0, ENTER_TIME, enterT);
+    fx.uniforms.uDark.value = smooth(0.25, ENTER_TIME - 0.1, enterT);
+    if (enterT > ENTER_TIME && !navigated) { navigated = true; goTo(GAMES[sel].url); }
+  } else {
+    near = Math.max(0, near - dt);
+    mouseSm.lerp(mouse, ease(2.5, dt));
+    wantPos.set(mouseSm.x * 1.5 + Math.sin(time * 0.13) * 0.45, mouseSm.y * 0.95 + Math.cos(time * 0.11) * 0.3, 18 - (1 - introE) * -4);
+    wantLook.set(mouseSm.x * 0.3, mouseSm.y * 0.2, 0);
+    camPos.lerp(wantPos, ease(1.4, dt));
+    camLook.lerp(wantLook, ease(2, dt));
+    progEl.style.width = '0%';
+  }
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+
+  // 진행률에 연동된 문구 — 멈추면 문구 전환도 멈춘다
+  {
+    let idx = -1, tgt = 0;
+    if (state === 'follow') {
+      const prog = clamp(followT / TRAVEL_TIME, 0, 1);   // 추적 진행률
+      [idx, tgt] = phraseTarget(prog);
+    }
+    if (idx !== shownPhrase) {
+      phraseOp += (0 - phraseOp) * ease(6, dt);
+      if (phraseOp < 0.01) { phraseOp = 0; shownPhrase = idx; phraseEl.textContent = idx >= 0 ? PHRASES[idx] : ''; }
+    } else {
+      phraseOp += (tgt - phraseOp) * ease(3.5, dt);
+    }
+    phraseEl.style.opacity = phraseOp.toFixed(3);
+  }
+
+  // 실들의 강조 / 어둠
+  const k = ease(4, dt);
+  for (const st of strands) {
+    const U = st.mat.userData.u;
+    let dimT = 1, hovT = 0, selT = 0;
+    if (following) { if (st.idx === sel && sel >= 0) selT = 1; else dimT = st.interactive ? 0.32 : 0.26; }
+    else if (st.interactive && st.idx === hovered) hovT = 1;
+    U.uDim.value += (dimT - U.uDim.value) * k;
+    U.uHover.value += (hovT - U.uHover.value) * ease(hovT > U.uHover.value ? 9 : 4, dt);
+    U.uSel.value += (selT - U.uSel.value) * k;
+    if (st.idx === sel && following) U.uHead.value = state === 'enter' ? 1 : u;
+    U.uTime.value = time;
+    st.fuzzMat.opacity = 0.6 * U.uDim.value + 0.1 * U.uSel.value + 0.15 * U.uHover.value;
+    if (st.glow) {
+      const g = U.uHover.value * 0.85;
+      st.glow.material.uniforms.uOpacity.value = g;
+      st.glow.visible = g > 0.004;
+    }
+  }
+
+  // 조명
+  const lk = ease(2.5, dt);
+  key.intensity += ((following ? 0.5 : 1) * KEY_I * introE - key.intensity) * lk;
+  rim.intensity += ((following ? 0.6 : 1) * RIM_I * introE - rim.intensity) * lk;
+  wander.intensity += ((following ? 0.35 : 1) * WANDER_I * introE * (0.75 + 0.25 * Math.sin(time * 1.7) * Math.sin(time * 0.53)) - wander.intensity) * lk;
+  wander.target.position.set(Math.sin(time * 0.21) * 4.5, Math.cos(time * 0.17) * 2.8, Math.sin(time * 0.29) * 1.5);
+  headLight.intensity += ((following ? 2.2 : 0) - headLight.intensity) * lk;
+  if (head) headLight.position.copy(head).add(new V(-0.8, 1.4, 1.6));
+  scene.fog.density += ((following ? 0.042 : 0.03) - scene.fog.density) * lk;
+
+  dust.rotation.y = time * 0.01; dust.position.y = Math.sin(time * 0.1) * 0.3;
+
+  // 끝에 가까워질수록 심장박동 같은 압박
+  const beat = Math.pow(Math.max(0, Math.sin(time * 5.2)), 10) + 0.6 * Math.pow(Math.max(0, Math.sin(time * 5.2 - 0.6)), 10);
+  fx.uniforms.uPulse.value = near * (0.3 + 0.2 * beat);
+  fx.uniforms.uTime.value = time;
+  bloom.strength = 0.12;
+
+  composer.render();
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>
